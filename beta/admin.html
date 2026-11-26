@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>서울 출사 지도 · 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="assets/admin.css">
+<script>
+/* 예상 못 한 오류 안내 — 가장 먼저 등록 */
+(function(){ function show(m){ var f=document.getElementById("fatal"); if(!f){ alert(m); return; } document.getElementById("fatalMsg").textContent=String(m).slice(0,800); f.hidden=false; }
+window.__spmFatal=show;
+window.addEventListener("error",function(e){ if(e.target&&e.target!==window) return; show((e.message||"오류")+(e.filename?"\n"+e.filename.split("/").pop()+":"+e.lineno:"")); });
+window.addEventListener("unhandledrejection",function(e){ var r=e.reason; show(r&&(r.stack||r.message)||r); }); })();
+/* 화면 모드: 방문자 페이지와 같은 설정을 씀 */
+(function(){ try { var t=localStorage.getItem("photo-map-theme"); if(t==="light"||t==="dark") document.documentElement.setAttribute("data-theme",t); } catch(e){} })();
+</script>
+</head>
+<body class="adm">
+<header class="adm-top">
+  <div class="adm-brand"><h1>서울 출사 지도 <span>관리</span></h1><p id="repoLine">저장소 확인 전</p></div>
+  <div class="adm-meter" id="meter" hidden><div class="bar"><i id="meterBar"></i></div><span id="meterText"></span></div>
+  <nav class="adm-nav">
+    <a class="btn small" href="./" target="_blank" rel="noopener">사이트 보기</a>
+    <button type="button" class="btn small" id="backupBtn" data-lock hidden>백업에서 옮기기</button>
+    <button type="button" class="btn small ghost" id="settingsBtn">설정</button>
+  </nav>
+</header>
+<div class="adm-banner" id="banner" role="status" hidden></div>
+
+<section class="adm-setup" id="setup" hidden aria-labelledby="setupT">
+  <div class="card">
+    <h2 id="setupT">이 기기에서 처음 한 번만 설정해요</h2>
+    <p>사진을 올리려면 GitHub 토큰이 필요해요. 토큰은 <b>이 브라우저에만</b> 저장되고, 사이트나 저장소에는 올라가지 않아요. 기기(노트북·아이패드·휴대폰)마다 한 번씩 입력해요.</p>
+    <ol class="steps">
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub의 새 토큰 만들기(Fine-grained)</a>를 열어요.</li>
+      <li><b>Repository access</b>에서 <b>Only select repositories</b>를 고르고 <code id="stRepo">seoul-photo-map</code>과 <code id="stNotes">seoul-photo-map-notes</code> 두 개만 선택해요.</li>
+      <li><b>Permissions → Repository permissions → Contents</b>를 <b>Read and write</b>로 바꿔요. 다른 권한은 그대로 둬요.</li>
+      <li>만료일을 정하고(예: 1년) 만든 뒤, 나온 토큰(<code>github_pat_…</code>)을 아래에 붙여 넣어요.</li>
+    </ol>
+    <label class="fld"><span>토큰</span><input id="tokenIn" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
+    <div class="row"><button type="button" class="btn primary" id="tokenSave" data-lock>확인하고 저장</button><span class="fine" id="tokenMsg"></span></div>
+    <details class="fine"><summary>저장소 이름이 다르면</summary><p>오른쪽 위 ‘설정’에서 바꿀 수 있어요.</p></details>
+  </div>
+</section>
+
+<main class="adm-main" id="main" hidden>
+  <aside class="adm-side" aria-label="장소 목록">
+    <div class="adm-sidebar-top">
+      <label class="sr" for="pq">장소 검색</label>
+      <input id="pq" type="search" placeholder="장소 검색" autocomplete="off">
+      <button type="button" class="btn small" id="newPlaceBtn" data-lock>+ 새 장소</button>
+    </div>
+    <div class="adm-sidefilter"><label><input type="checkbox" id="onlyPhotos"> 사진 있는 곳만</label><span class="fine" id="placeCount"></span></div>
+    <ul class="adm-plist" id="plist"></ul>
+  </aside>
+  <section class="adm-work" id="work" aria-live="polite">
+    <div class="adm-empty">왼쪽에서 장소를 고르세요.</div>
+  </section>
+</main>
+
+<div id="modalRoot"></div>
+<div class="adm-busy" id="busy" hidden role="alertdialog" aria-modal="true" aria-labelledby="busyT">
+  <div class="box"><div class="spin" aria-hidden="true"></div><strong id="busyT">처리 중</strong><span id="busyMsg"></span><div class="pbar"><i id="busyBar"></i></div><span class="fine">끝날 때까지 이 창을 닫지 마세요.</span></div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="fatal" id="fatal" hidden role="alertdialog" aria-modal="true" aria-labelledby="fatalT"><div class="fatal-box"><h2 id="fatalT">문제가 생겼어요</h2><p>예상하지 못한 오류가 났어요. 올리던 중이었다면 저장소에는 반영되지 않았거나 일부만 반영됐을 수 있어요. 새로고침한 뒤 목록을 확인하고, 계속되면 아래 내용을 복사해 두세요.</p><pre id="fatalMsg"></pre><button type="button" class="btn primary" onclick="location.reload()">새로고침</button> <button type="button" class="btn" onclick="document.getElementById('fatal').hidden=true">닫기</button></div></div>
+<script type="module" src="assets/admin.js"></script>
+</body>
+</html>

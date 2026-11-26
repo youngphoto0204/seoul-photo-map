@@ -657,7 +657,7 @@ function openBackup() {
   MIG = null;
   modal(`<h2>백업에서 옮기기</h2>
     <p>예전 편집본에서 저장한 <b>전체 백업</b> 파일(<code>서울출사지도-전체백업-….json</code>)을 고르세요. 파일은 이 브라우저 안에서만 읽어요.</p>
-    <ul class="fine" style="margin:0 0 10px;padding-left:18px"><li>‘공개’로 표시한 사진만 옮겨요. 비공개 사진은 건너뛰어요.</li><li>메모·방문 기록·사진 메모는 비공개 저장소로만 가요.</li><li>이미 옮긴 사진은 다시 올리지 않으니, 중간에 멈춰도 다시 하면 돼요.</li><li>사진이 많으면 노트북에서 하는 게 좋아요.</li></ul>
+    <ul class="fine" style="margin:0 0 10px;padding-left:18px"><li>백업 안의 사진이 모두 보여요. 체크한 사진만 새 사이트에 공개돼요(처음엔 예전에 ‘공개’였던 사진만 체크).</li><li>메모·방문 기록·사진 메모는 비공개 저장소로만 가요.</li><li>이미 옮긴 사진은 다시 올리지 않으니, 중간에 멈춰도 다시 하면 돼요.</li><li>사진이 많으면 노트북에서 하는 게 좋아요.</li></ul>
     <label class="btn primary" style="cursor:pointer">백업 파일 고르기<input type="file" id="bkIn" accept="application/json,.json" hidden></label>
     <div id="bkBody"></div>
     <div class="mfoot"><button type="button" class="btn" data-act="modal-x" id="bkClose">닫기</button></div>`);
@@ -672,7 +672,7 @@ async function readBackup(file) {
     if ((j.version || 0) < 5) throw new UserError("예전 버전(5 이전) 백업이에요. 예전 편집본에서 한 번 열어 새로 전체 백업을 저장해 주세요.");
     if (j.kind !== "full" || !(j.photos || []).some(p => p.fullData)) { if (!confirm("사진이 들어 있지 않은 백업이에요(‘장소만’). 장소 수정값과 메모만 옮길까요?")) return; }
     const P = A.P, ids = new Set(P.places.map(r => r.id));
-    const plan = { man: [], hide: [], newPlaces: [], memos: 0, visits: 0, research: 0, photos: [], skippedPrivate: 0, skippedDone: 0, skippedNoPlace: 0 };
+    const plan = { man: [], hide: [], newPlaces: [], memos: 0, visits: 0, research: 0, photos: [], skippedDone: 0, skippedNoPlace: 0 };
     const publicIds = new Set();
     for (const rec of j.places || []) {
       const pub = rec.public !== false;
@@ -689,35 +689,52 @@ async function readBackup(file) {
     for (const r of P.places) if (r.public !== false && !plan.hide.includes(r.id)) publicIds.add(r.id);
     const have = new Set(A.F.photos.map(x => x.id));
     for (const ph of j.photos || []) {
-      if (!ph.public) { plan.skippedPrivate++; continue; }
       if (!ph.fullData) continue;
       if (!ph.placeId || !publicIds.has(ph.placeId)) { plan.skippedNoPlace++; continue; }
       const id = safeId(ph.id); if (have.has(id)) { plan.skippedDone++; continue; }
-      plan.photos.push({ id, src: ph, wm: "br", status: "wait" });
+      plan.photos.push({ id, src: ph, wm: "br", status: "wait", pick: !!ph.public });
     }
     MIG = { j, plan };
     drawMigration();
   });
 }
+const placeLabel = id => recOf(id) ? nameOf(recOf(id)) : (MIG?.plan.newPlaces.find(r => r.id === id)?.src?.name || "");
 function drawMigration() {
   const { plan } = MIG, el = $("#bkBody"); if (!el) return;
-  const ready = plan.photos.filter(p => p.status === "ready").length;
+  const picked = plan.photos.filter(p => p.pick), ready = picked.filter(p => p.status === "ready").length;
+  const wasPub = plan.photos.filter(p => p.src.public).length;
+  // 장소별로 묶어서 보여 줌
+  const groups = new Map(); plan.photos.forEach((p, i) => { const k = p.src.placeId; if (!groups.has(k)) groups.set(k, []); groups.get(k).push([p, i]); });
+  const fig = ([p, i]) => `<figure class="${p.pick ? "picked" : ""}">
+      <label class="pick"><input type="checkbox" data-mpick="${i}" ${p.pick ? "checked" : ""} aria-label="이 사진 옮기기">
+        <img src="${p.status === "ready" ? p.url : esc(p.src.thumbData || p.src.fullData)}" alt="" loading="lazy">
+        ${p.src.public ? "" : `<span class="was">예전 비공개</span>`}</label>
+      <figcaption>${esc(p.src.caption || "")}${p.status === "ready" ? ` · ${kb(p.full.size)}` : p.status === "error" ? " · 변환 오류" : ""}</figcaption>
+      ${p.status === "ready" && p.pick ? `<div class="wm">${WM_POS.map(([k, l]) => `<button type="button" data-mwm="${k}" data-i="${i}" aria-pressed="${p.wm === k}" title="워터마크 ${l}">${{ br: "↘", bl: "↙", bc: "↓", tr: "↗", tl: "↖" }[k]}</button>`).join("")}</div>` : ""}</figure>`;
   el.innerHTML = `<h3 style="margin:14px 0 6px">옮길 내용</h3>
     <ul class="steplist">
       <li class="${MIG.doneData ? "done" : ""}">장소 정보: 직접 고친 값 ${plan.man.length}곳 · 숨김 ${plan.hide.length}곳 · 내가 추가한 장소 ${plan.newPlaces.length}곳</li>
       <li class="${MIG.doneNotes ? "done" : ""}">비공개 메모: 장소 메모 ${plan.memos}곳 · 방문 기록 ${plan.visits}곳 · 조사 메모 ${plan.research}곳 · 사진 메모</li>
-      <li class="${MIG.donePhotos ? "done" : ""}">공개 사진 ${plan.photos.length}장${plan.skippedPrivate ? ` (비공개 ${plan.skippedPrivate}장 제외)` : ""}${plan.skippedDone ? ` · 이미 옮긴 ${plan.skippedDone}장 건너뜀` : ""}${plan.skippedNoPlace ? ` · 장소가 없거나 숨김인 ${plan.skippedNoPlace}장 제외` : ""}</li>
+      <li class="${MIG.donePhotos ? "done" : ""}">사진: ${plan.photos.length}장 중 <b>${picked.length}장 선택</b>${plan.skippedDone ? ` · 이미 옮긴 ${plan.skippedDone}장 건너뜀` : ""}${plan.skippedNoPlace ? ` · 장소가 없거나 숨김인 ${plan.skippedNoPlace}장 제외` : ""}</li>
     </ul>
-    ${plan.photos.length ? `<p class="fine">사진은 모두 오른쪽 아래 워터마크로 바꿔요. 사진마다 위치를 바꿀 수 있어요(바꾸면 다시 변환).</p>
-    <div class="row" style="margin-bottom:8px"><button type="button" class="btn" data-act="mig-convert" data-lock ${plan.photos.some(p => p.status === "wait") ? "" : "disabled"}>사진 변환하기 (${plan.photos.filter(p => p.status === "wait").length}장)</button><span class="fine">${ready}/${plan.photos.length}장 준비</span></div>
-    <div class="mini-grid">${plan.photos.map((p, i) => `<figure>${p.status === "ready" ? `<img src="${p.url}" alt="">` : `<div style="aspect-ratio:1;border-radius:6px;background:var(--sunk);display:grid;place-items:center">${p.status === "error" ? "오류" : "대기"}</div>`}
-      <figcaption>${esc(recOf(p.src.placeId) ? nameOf(recOf(p.src.placeId)) : (MIG.plan.newPlaces.find(r => r.id === p.src.placeId)?.src?.name || ""))}${p.status === "ready" ? ` · ${kb(p.full.size)}` : ""}</figcaption>
-      ${p.status === "ready" ? `<div class="wm">${WM_POS.map(([k, l]) => `<button type="button" data-mwm="${k}" data-i="${i}" aria-pressed="${p.wm === k}" title="${l}">${{ br: "↘", bl: "↙", bc: "↓", tr: "↗", tl: "↖" }[k]}</button>`).join("")}</div>` : ""}</figure>`).join("")}</div>` : ""}
-    <div class="mfoot"><button type="button" class="btn primary" data-act="mig-run" data-lock ${plan.photos.some(p => p.status === "wait" || p.status === "processing") ? "disabled" : ""}>${MIG.donePhotos ? "다 옮겼어요" : "옮기기 시작"}</button></div>`;
+    ${plan.photos.length ? `<p class="fine" style="margin:4px 0 8px">체크한 사진만 새 사이트에 공개돼요. 처음에는 예전 편집본에서 ‘공개’였던 사진(${wasPub}장)만 체크돼 있어요. 사진을 누르면 체크가 바뀌어요.</p>
+    <div class="row mig-tools">
+      <button type="button" class="btn small" data-act="mig-all">모두 선택</button>
+      <button type="button" class="btn small" data-act="mig-none">모두 해제</button>
+      <button type="button" class="btn small" data-act="mig-pub">예전 공개만</button>
+      <span class="grow"></span>
+      <button type="button" class="btn small" data-act="mig-convert" data-lock ${picked.some(p => p.status === "wait") ? "" : "disabled"}>미리 변환해 보기</button>
+      <span class="fine">${ready}/${picked.length}장 변환됨</span></div>
+    <div class="mig-groups">${[...groups].map(([pid, list]) => `<section class="mig-g"><div class="mig-gh"><b>${esc(placeLabel(pid) || pid)}</b><span class="fine">${list.filter(([p]) => p.pick).length}/${list.length}</span>
+        <button type="button" class="btn small ghost" data-act="mig-place" data-pid2="${esc(pid)}">${list.every(([p]) => p.pick) ? "이 장소 해제" : "이 장소 모두 선택"}</button></div>
+      <div class="mini-grid">${list.map(fig).join("")}</div></section>`).join("")}</div>
+    <p class="fine">워터마크는 오른쪽 아래로 들어가요. 위치를 바꾸려면 ‘미리 변환해 보기’ 뒤에 사진 아래 화살표를 누르세요. 변환하지 않고 바로 ‘옮기기 시작’을 눌러도 돼요.</p>` : `<p class="fine">옮길 사진이 없어요.</p>`}
+    <div class="mfoot"><button type="button" class="btn primary" data-act="mig-run" data-lock>${MIG.donePhotos && !picked.length ? "다 옮겼어요 · 닫기" : picked.length ? `옮기기 시작 (사진 ${picked.length}장)` : "옮기기 시작 (사진 없이)"}</button></div>`;
 }
-async function migConvert(only) {
-  await withLock("사진 변환", async prog => {
-    const list = only != null ? [MIG.plan.photos[only]] : MIG.plan.photos.filter(p => p.status === "wait");
+async function migConvert(only) { await withLock("사진 변환", prog => migConvertIn(prog, only)); }
+async function migConvertIn(prog, only) {
+  {
+    const list = only != null ? [MIG.plan.photos[only]] : MIG.plan.photos.filter(p => p.pick && p.status === "wait");
     let i = 0;
     for (const p of list) {
       prog(`변환 중 ${i + 1}/${list.length}`, i / list.length); i++;
@@ -729,7 +746,7 @@ async function migConvert(only) {
       } catch (e) { console.error(e); p.status = "error"; }
     }
     drawMigration();
-  });
+  }
 }
 function compactRes(res, sources) {
   const out = {};
@@ -749,9 +766,13 @@ function compactRes(res, sources) {
   return out;
 }
 async function migRun() {
-  if (MIG.donePhotos && MIG.doneData && MIG.doneNotes) { closeModal(); return; }
   const { j, plan } = MIG;
+  const picked = plan.photos.filter(p => p.pick);
+  if (MIG.donePhotos && !picked.length) { closeModal(); return; }
+  if (!picked.length && plan.photos.length && !confirm("선택한 사진이 없어요. 사진 없이 장소 정보와 메모만 옮길까요?")) return;
+  const pickedIds = new Set(picked.map(p => p.id));
   await withLock("백업에서 옮기기", async prog => {
+    if (picked.some(p => p.status === "wait")) await migConvertIn((m, f) => prog("사진 " + m, f == null ? null : f * 0.3));
     // 1) 공개 장소 데이터
     if (!MIG.doneData && (plan.man.length || plan.hide.length || plan.newPlaces.length)) {
       prog("장소 정보 반영 중…", 0.05);
@@ -778,12 +799,12 @@ async function migRun() {
           for (const [k, m] of Object.entries(rec.res || {})) if (m && m.note) { n.research = n.research || {}; if (!n.research[k]) n.research[k] = m.note; }
           if (Object.keys(n).length) N.places[rec.id] = n;
         }
-        for (const ph of j.photos || []) if (ph.note && ph.public) { const id = safeId(ph.id); N.photos[id] = { ...(N.photos[id] || {}), note: ph.note }; }
+        for (const ph of j.photos || []) { const id = safeId(ph.id); if (ph.note && pickedIds.has(id)) N.photos[id] = { ...(N.photos[id] || {}), note: ph.note }; }
       }, "백업에서 옮기기: 메모");
     }
     MIG.doneNotes = true; drawMigration();
     // 3) 공개 사진: 10장씩 한 커밋
-    const todo = plan.photos.filter(p => p.status === "ready");
+    const todo = plan.photos.filter(p => p.pick && p.status === "ready");
     for (let s = 0; s < todo.length; s += 10) {
       const chunk = todo.slice(s, s + 10), blobs = [], entries = [];
       for (const [k, p] of chunk.entries()) {
@@ -801,7 +822,7 @@ async function migRun() {
       } });
       chunk.forEach(p => p.status = "done");
     }
-    MIG.donePhotos = true; plan.photos = plan.photos.filter(p => p.status !== "done"); drawMigration();
+    MIG.donePhotos = true; MIG.doneNotes = false; plan.skippedDone += todo.length; plan.photos = plan.photos.filter(p => p.status !== "done"); plan.photos.forEach(p => p.pick = false); drawMigration();
     renderList(); if (A.sel) { A.pw = null; renderWork(); }
     const errs = plan.photos.filter(p => p.status === "error").length;
     banner(`<b>백업에서 옮기기를 마쳤어요.</b> 사진 ${todo.length}장${errs ? ` (변환 오류 ${errs}장은 건너뜀)` : ""}. 사이트에는 1~2분 뒤에 반영돼요.`, "ok");
@@ -917,6 +938,8 @@ document.addEventListener("click", async e => {
   const tab = e.target.closest("[data-tab]"); if (tab) { if (A.tab === "photos" && pwDirty() && !confirm("저장하지 않은 사진 변경이 있어요. 다른 탭으로 갈까요?")) return; A.tab = tab.dataset.tab; A.pw = null; renderWork(); return; }
   const wm = e.target.closest("[data-wm]");
   if (wm) { const q = A.queue.find(x => "q:" + x.id === wm.dataset.k); if (q && q.wm !== wm.dataset.wm && q.status !== "processing") { q.wm = wm.dataset.wm; q.status = "wait"; updateQCard(q); runQueue(); } return; }
+  const mp = e.target.closest("[data-mpick]");
+  if (mp) { const p = MIG.plan.photos[+mp.dataset.mpick]; if (p) { p.pick = mp.checked; drawMigration(); } return; }
   const mwm = e.target.closest("[data-mwm]"); if (mwm) { const p = MIG.plan.photos[+mwm.dataset.i]; if (p && p.wm !== mwm.dataset.mwm) { p.wm = mwm.dataset.mwm; p.status = "wait"; migConvert(+mwm.dataset.i); } return; }
   const t = e.target.closest("[data-act]"); if (!t || t.disabled) return;
   const a = t.dataset.act, id = t.dataset.id;
@@ -937,6 +960,8 @@ document.addEventListener("click", async e => {
   else if (a === "modal-x") closeModal();
   else if (a === "np-save") saveNewPlace();
   else if (a === "mig-convert") migConvert();
+  else if (a === "mig-all" || a === "mig-none" || a === "mig-pub") { MIG.plan.photos.forEach(p => p.pick = a === "mig-all" ? true : a === "mig-none" ? false : !!p.src.public); drawMigration(); }
+  else if (a === "mig-place") { const list = MIG.plan.photos.filter(p => p.src.placeId === t.dataset.pid2); const on = !list.every(p => p.pick); list.forEach(p => p.pick = on); drawMigration(); }
   else if (a === "mig-run") migRun();
   else if (a === "token-clear") { if (confirm("이 기기에서 토큰을 지울까요? 다시 올리려면 토큰을 새로 넣어야 해요.")) { token = ""; lsSet(TOKEN_KEY, null); closeModal(); location.reload(); } }
   else if (a === "cfg-save") {

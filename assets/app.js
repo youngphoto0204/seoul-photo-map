@@ -1156,8 +1156,7 @@ function openAbout(){
       <p style="margin:0"><b>경로 찾기:</b> 역 연결과 확인된 환승만 써요. 시간표·급행·막차는 쓰지 않아 소요시간은 보여 주지 않아요.</p>
       <p style="margin:0"><b>해·달:</b> 관측 위치·날짜·시각으로 계산해요. 지형·건물·날씨는 반영하지 않아요.</p>
       <p style="margin:0"><b>길찾기:</b> 네이버·카카오·구글 지도를 여는 연결이에요. 경로와 시간은 각 서비스에서 계산해요.</p>
-      ${pub?"":`<p style="margin:0"><b>새 JSON:</b> 파일을 올릴 때만 비교·교체돼요. 자동 동기화는 없어요. 직접 입력값, 메모, 사진은 유지하고 제외 장소는 보관함으로 옮겨요.</p>
-      <p style="margin:0"><b>공개:</b> 공개 지도는 ‘공개용 index.html’을 올린 읽기 전용 파일이에요. 이 브라우저의 편집 내용은 다시 내보내 올리기 전까지 공개 지도에 반영되지 않아요.</p>`}
+      <p class="ab-admin"><a href="admin.html">관리</a> <span>운영자 전용 · 사진 올리기와 장소 정보 수정</span></p>
     </div></div></div>`;
   const close=()=>{ root.innerHTML=""; lastFocus?.focus?.(); };
   root.querySelector("#abClose").addEventListener("click",close);
